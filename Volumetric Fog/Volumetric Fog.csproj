@@ -81,6 +81,10 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Assets\TMX Games\Scripts\Image Effect\GlobalFog.cs" />
+    <Compile Include="Assets\TMX Games\Scripts\Image Effect\PostEffectsBase.cs" />
+    <Compile Include="Assets\TMX Games\Scripts\Image Effect\PostEffectsHelper.cs" />
+    <Compile Include="Assets\TMX Games\Scripts\Image Effect\VolumetricFog.cs" />
     <Compile Include="Assets\TMX Games\Scripts\Noise\NoiseTools\NoiseChannel.cs" />
     <Compile Include="Assets\TMX Games\Scripts\Noise\NoiseTools\NoiseGeneratorBase.cs" />
     <Compile Include="Assets\TMX Games\Scripts\Noise\NoiseTools\NoisePass.cs" />
@@ -93,6 +97,9 @@
     <Compile Include="Assets\TMX Games\Scripts\Utils\Vector2Int.cs" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="Assets\TMX Games\Shaders\Image Effects\GlobalFog.shader" />
+    <None Include="Assets\TMX Games\Shaders\Image Effects\ScreenSpaceRaytrace.cginc" />
+    <None Include="Assets\TMX Games\Shaders\Image Effects\VolumetricFog.shader" />
     <None Include="Assets\TMX Games\Shaders\Tex3DPreview.shader" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

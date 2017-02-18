@@ -133,6 +133,9 @@
     <Compile Include="Assets\TMX Games\Scripts\Noise\Editor\NoiseVolumeEditor.cs" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="Assets\TMX Games\Shaders\Image Effects\GlobalFog.shader" />
+    <None Include="Assets\TMX Games\Shaders\Image Effects\ScreenSpaceRaytrace.cginc" />
+    <None Include="Assets\TMX Games\Shaders\Image Effects\VolumetricFog.shader" />
     <None Include="Assets\TMX Games\Shaders\Tex3DPreview.shader" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

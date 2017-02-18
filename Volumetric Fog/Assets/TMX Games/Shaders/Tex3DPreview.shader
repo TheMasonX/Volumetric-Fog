@@ -8,19 +8,20 @@
 		_Y ("Y", Range(0.0, 1.0)) = 0.0
 		_Z ("Z", Range(0.0, 1.0)) = 0.0
 		_UseLOD ("UseLOD", int) = 0
+		_Channels ("Channels", Vector) = (1.0, 0.0, 0.0, 0.0)
 	}
 	SubShader
 	{
 		Tags { "RenderType"="Opaque" }
 		LOD 100
+		Cull Back
+		ZWrite On
 
 		Pass
 		{
 			CGPROGRAM
 			#pragma vertex vert
 			#pragma fragment frag
-			// make fog work
-			#pragma multi_compile_fog
 			
 			#include "UnityCG.cginc"
 
@@ -41,6 +42,7 @@
 			float _Z;
 			float _Scale;
 			int _UseLOD;
+			float4 _Channels;
 			
 			v2f vert (appdata v)
 			{
@@ -55,10 +57,12 @@
 			{
 				// sample the texture
 				fixed4 col;
-				if(_UseLOD)
-					col = tex3Dlod(_MainTex, float4(i.pos.xyz, 0.0)).r;
-				else
-					col = tex3D(_MainTex, i.pos).r;
+			if (_UseLOD)
+				col = tex3Dlod(_MainTex, float4(i.pos.xyz, 0.0));
+			else
+				col = tex3D(_MainTex, i.pos);
+
+				col *= _Channels;
 				return col;
 			}
 			ENDCG
