@@ -12,7 +12,7 @@ namespace Noise
 
         public bool skip = false;
 
-        public enum NoiseType { Perlin, Worley }
+        public enum NoiseType { Perlin, Worley, MultiFractal }
 
         public NoiseType noiseType = NoiseType.Perlin;
 
@@ -32,7 +32,7 @@ namespace Noise
         [Range(-10f, 10f)]
         public float amplitude = 1f;
 
-        [Range(-2f, 2f)]
+        [Range(-2f, 5f)]
         public float persistence = .5f;
 
         [Range(1, 4)]
@@ -58,6 +58,8 @@ namespace Noise
         {
             if (noiseType == NoiseType.Perlin)
                 noise = new NoiseTools.PerlinNoise(frequency, 1, seed, lacunarity, amplitude, persistence);
+            else if(noiseType == NoiseType.MultiFractal)
+                noise = new NoiseTools.RidgedMultiFractalNoise(frequency, 1, seed, lacunarity, amplitude, persistence);
             else
                 noise = new NoiseTools.WorleyNoise(frequency, 1, seed, lacunarity, amplitude, persistence);
         }

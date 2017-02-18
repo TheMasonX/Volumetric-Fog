@@ -11,6 +11,12 @@ public class VolumetricFog : PostEffectsBase
 {
     public Shader fogShader;
     public Material fogMaterial;
+    public bool downsample;
+    [Range(0.05f, 1f)]
+    public float downsampleSize = .5f;
+    public bool blur;
+    [Range(0f, 1f)]
+    public float blurSize = .1f;
 
     private Camera cam;
     private Transform camtr;
@@ -90,7 +96,55 @@ public class VolumetricFog : PostEffectsBase
 
         int pass = 0;
 
-        CustomGraphicsBlit(source, destination, fogMaterial, pass);
+        if (downsample)
+        {
+            var downscaleTemp = RenderTexture.GetTemporary(Mathf.CeilToInt(Screen.width * downsampleSize), Mathf.CeilToInt(Screen.height * downsampleSize), 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Default, 8);
+            CustomGraphicsBlit(source, downscaleTemp, fogMaterial, pass);
+            if (blur)
+            {
+                float blurSizeCalc = blurSize * .01f;
+                float blurSizeCalc_SQR = blurSizeCalc * blurSizeCalc;
+                fogMaterial.SetVector("_Offset", new Vector2(blurSizeCalc, 0f));
+                Graphics.Blit(downscaleTemp, destination, fogMaterial, 1);
+                fogMaterial.SetVector("_Offset", new Vector2(0f, blurSizeCalc));
+                Graphics.Blit(destination, downscaleTemp, fogMaterial, 1);
+
+                fogMaterial.SetVector("_Offset", new Vector2(blurSizeCalc_SQR, blurSizeCalc_SQR));
+                Graphics.Blit(downscaleTemp, destination, fogMaterial, 1);
+                fogMaterial.SetVector("_Offset", new Vector2(-blurSizeCalc_SQR, -blurSizeCalc_SQR));
+                Graphics.Blit(destination, downscaleTemp, fogMaterial, 1);
+
+                fogMaterial.SetVector("_Offset", new Vector2(-blurSizeCalc_SQR, blurSizeCalc_SQR));
+                Graphics.Blit(downscaleTemp, destination, fogMaterial, 1);
+                fogMaterial.SetVector("_Offset", new Vector2(blurSizeCalc_SQR, -blurSizeCalc_SQR));
+                Graphics.Blit(destination, downscaleTemp, fogMaterial, 1);
+
+            }
+
+            Shader.SetGlobalTexture("_FogTex", downscaleTemp);
+            Shader.SetGlobalTexture("_SceneTex", source);
+
+            Graphics.Blit(downscaleTemp, destination, fogMaterial, 2);
+            RenderTexture.ReleaseTemporary(downscaleTemp);
+        }
+        else
+        {
+            CustomGraphicsBlit(source, destination, fogMaterial, pass);
+
+            if (blur)
+            {
+                float blurSizeCalc = blurSize * .01f;
+                float blurSizeCalc_SQR = blurSizeCalc * blurSizeCalc;
+                fogMaterial.SetVector("_Offset", new Vector2(blurSizeCalc, 0f));
+                Graphics.Blit(destination, destination, fogMaterial, 1);
+                fogMaterial.SetVector("_Offset", new Vector2(0f, blurSizeCalc));
+                Graphics.Blit(destination, destination, fogMaterial, 1);
+            }
+
+            Shader.SetGlobalTexture("_FogTex", destination);
+            Shader.SetGlobalTexture("_SceneTex", source);
+            Graphics.Blit(destination, destination, fogMaterial, 2);
+        }
     }
 
     static void CustomGraphicsBlit (RenderTexture source, RenderTexture dest, Material fxMaterial, int passNr)

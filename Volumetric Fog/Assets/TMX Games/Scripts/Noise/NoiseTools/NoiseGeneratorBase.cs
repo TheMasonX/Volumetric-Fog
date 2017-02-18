@@ -60,12 +60,12 @@ namespace NoiseTools
 
         #region Protected members
 
-        int _freq;
-        int _repeat;
-        int _seed;
-        int _lacunarity;
-        float _persistence;
-        float _amplitude;
+        protected int _freq;
+        protected int _repeat;
+        protected int _seed;
+        protected int _lacunarity;
+        protected float _persistence;
+        protected float _amplitude;
 
         protected float Frequency { get { return _freq; } }
 
@@ -125,7 +125,7 @@ namespace NoiseTools
             return sum;
         }
 
-        float Calculate3DFractal(Vector3 point, int level)
+        protected virtual float Calculate3DFractal(Vector3 point, int level)
         {
             var originalFreq = _freq;
             var originalRepeat = _repeat;

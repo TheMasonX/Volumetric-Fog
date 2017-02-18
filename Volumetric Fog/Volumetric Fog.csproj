@@ -89,6 +89,7 @@
     <Compile Include="Assets\TMX Games\Scripts\Noise\NoiseTools\NoiseGeneratorBase.cs" />
     <Compile Include="Assets\TMX Games\Scripts\Noise\NoiseTools\NoisePass.cs" />
     <Compile Include="Assets\TMX Games\Scripts\Noise\NoiseTools\PerlinNoise.cs" />
+    <Compile Include="Assets\TMX Games\Scripts\Noise\NoiseTools\RidgedMultiFractalNoise.cs" />
     <Compile Include="Assets\TMX Games\Scripts\Noise\NoiseTools\WorleyNoise.cs" />
     <Compile Include="Assets\TMX Games\Scripts\Noise\NoiseTools\XXHash.cs" />
     <Compile Include="Assets\TMX Games\Scripts\Noise\NoiseVolume.cs" />
