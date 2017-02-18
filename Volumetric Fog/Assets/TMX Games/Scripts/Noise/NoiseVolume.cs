@@ -102,7 +102,8 @@ namespace Noise
 
             size = _texture.width;
 
-            pixelBuffer = new Color[size * size * size];
+            pixelBuffer = _texture.GetPixels();
+            //pixelBuffer = new Color[size * size * size];
 
             threadCount = SystemInfo.processorCount;
 
@@ -199,10 +200,12 @@ namespace Noise
                         z = scale * iz;
                         pos = new Vector3(x, y, z);
 
-                        r = channel_R.GetValue(pos);
-                        g = channel_G.GetValue(pos);
-                        b = channel_B.GetValue(pos);
-                        a = channel_A.GetValue(pos);
+                        index = ix * size * size + iy * size + iz;
+
+                        r = channel_R.GetValue(pos, pixelBuffer[index].r);
+                        g = channel_G.GetValue(pos, pixelBuffer[index].g);
+                        b = channel_B.GetValue(pos, pixelBuffer[index].b);
+                        a = channel_A.GetValue(pos, pixelBuffer[index].a);
 
                         //lock (threadLock)
                         //{
@@ -212,7 +215,6 @@ namespace Noise
                         //    a = noisePasses_A.GetValue(pos);
                         //}
 
-                        index = ix * size * size + iy * size + iz;
                         pixelColor = new Color(r, g, b, a);
                         pixelBuffer[index] = pixelColor;
                     }

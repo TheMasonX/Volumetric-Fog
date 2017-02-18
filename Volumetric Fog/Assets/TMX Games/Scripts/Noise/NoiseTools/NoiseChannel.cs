@@ -36,8 +36,11 @@ namespace Noise
             }
         }
 
-        public float GetValue (Vector3 pos)
+        public float GetValue (Vector3 pos, float lastValue)
         {
+            if (skip)
+                return lastValue;
+
             float value = initialValue;
 
             for (int i = 0; i < noisePasses.Count; i++)

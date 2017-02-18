@@ -8,7 +8,7 @@ Properties {
 	_Rays ("Rays", Range(1, 512)) = 32
 	_MaxDistance ("MaxDistance", Range(0.01, 10000.0)) = 500
 	_NearWeight ("Near Weight", Range(0.0, 1.0)) = .5
-    _LightRays ("Light Samples", Range(1, 64)) = 16
+    _LightRays ("Light Samples", Range(1, 32)) = 16
     _LightDistance ("Light Distance", Range(0.01, 1000.0)) = 200
 	//_StepSize ("Step Size", Range(0.01, 50.0)) = .25
 
@@ -17,11 +17,14 @@ Properties {
 	_Density ("Density", Range(0.0, 10.0)) = .25
 	_Saturation ("Saturation", Range(0.0, 10.0)) = .25
 	_Scale ("Scale", Range(0.0, 1.0)) = .15
-	//_Scale ("Scale", Vector) = (1, 1, 1, 0)
+	_AxisScale ("Axis Scale", Vector) = (1, 1, 1, 0)
 
 	[Space]
-    _Scatter("Scattering Coeff", Float) = 0.008
+    _ShadowScatter("Shadow Scattering Coeff", Range(0.005, .05)) = 0.008
+    _Scatter("Scattering Coeff", Range(0.005, .05)) = 0.008
     _HGCoeff("Henyey-Greenstein", Range(0.0, 1.0)) = 0.5
+    _HGAmount("Henyey-Greenstein Amount", Range(0.0, 2.0)) = 0.5
+    _ShadowAmount("Shadow Amount", Range(0.0, 2.0)) = 0.5
 	_Extinct ("Extinction Coeff", Range(0.01, .5)) = 0.01
 }
 
@@ -44,10 +47,13 @@ CGINCLUDE
 	uniform float _Density;
 	uniform float _Saturation;
 	uniform float _Scale;
-	//uniform float4 _Scale;
+	uniform float4 _AxisScale;
 
+	uniform float _ShadowScatter;
+	uniform float _ShadowAmount;
 	uniform float _Scatter;
 	uniform float _HGCoeff;
+	uniform float _HGAmount;
 	uniform float _Extinct;
 
 	uniform float4 _MainTex_TexelSize;
@@ -104,17 +110,24 @@ CGINCLUDE
 
 	float2 NoiseAtPoint(float3 pos)
 	{
-		return tex3D(_Noise, pos * .002 * _Scale).rg;
+		float3 value = tex3D(_Noise, pos * .00075 * _Scale * _AxisScale.xyz).rgb;
+		float cutoff = _Cutoff * (.5 + .5 * value.b);
+		value.x = saturate((value.x - cutoff) * (1.0 - cutoff));
+		value.x *= value.x;
+		//value.x *= ;
+		return value.rg;
 		//return tex3D(_Noise, pos * .001 * _Scale.xyz).rg;
 	}
 
 	float LightMarch(float3 pos, float densityMultiplier)
 	{
 		float3 light = _WorldSpaceLightPos0.xyz;
-		int lightRays = min(_LightRays, 64);
+		int lightRays = min(_LightRays, 32);
 
-		float3 lightStep = _LightDistance / lightRays / _Rays * light;
+		//float3 lightStep = _LightDistance / lightRays / _Rays * light;
 		float invLightRays = 1.0 / lightRays;
+		//float invRays = 256.0 / _Rays;
+		float3 lightStep = _LightDistance / lightRays * light;
 
 		pos += lightStep;
 
@@ -122,10 +135,35 @@ CGINCLUDE
 
 		UNITY_LOOP for (int s = 0; s < lightRays; s++)
 		{
-			depth += (NoiseAtPoint(pos) - _Cutoff) * invLightRays;
+			depth += (NoiseAtPoint(pos)) * invLightRays;
+			//depth += (NoiseAtPoint(pos) - _Cutoff) * invLightRays;
 			pos += lightStep;
 		}
 		
+		return BeerPowder(depth);
+	}
+
+	float ShadowMarch(float3 pos, float densityMultiplier)
+	{
+		float3 light = -_WorldSpaceLightPos0.xyz;
+		int lightRays = min(_LightRays, 32);
+
+		//float3 lightStep = _LightDistance / lightRays / _Rays * light;
+		float invLightRays = 1.0 / lightRays;
+		//float invRays = 256.0 / _Rays;
+		float3 lightStep = _LightDistance / lightRays * light;
+
+		pos += lightStep;
+
+		float depth = 0.0;
+
+		UNITY_LOOP for (int s = 0; s < lightRays; s++)
+		{
+			depth += (NoiseAtPoint(pos)) * invLightRays;
+			//depth += (NoiseAtPoint(pos) - _Cutoff) * invLightRays;
+			pos += lightStep;
+		}
+
 		return BeerPowder(depth);
 	}
 
@@ -143,7 +181,11 @@ CGINCLUDE
 
 		float3 light = _WorldSpaceLightPos0.xyz;
 		float ldot = abs(dot(normalizedDir, light));
+		//ldot *= ldot;
+		//ldot = 1.0 - (1.0 - ldot) * (1.0 - ldot);
+		//float ldot = dot(normalizedDir, light);
 		float hg = HenyeyGreenstein(ldot);
+		//hg = pow(hg, .5);
 
 		float depth = dpth * _ProjectionParams.z;
 		depth = (dpth < .99) ? min(depth, _MaxDistance) : _MaxDistance;
@@ -165,23 +207,24 @@ CGINCLUDE
 
 		UNITY_LOOP for (int i = 0; i < _Rays; i++)
 		{
-			float2 noiseAtPoint = NoiseAtPoint(position);
-			float density = saturate((noiseAtPoint.x - _Cutoff) * (1.0 - _Cutoff));
-			//float density = noiseAtPoint.x;
-			//density *= density * (3.0 - 2.0 * density);
-			density *= density * density;
-			//density -= _Cutoff;
-			if (density > 0.0)
+			float2 noise = NoiseAtPoint(position);
+			if (noise.x > 0.0)
 			{
-				//float scatter = fogDepth * _Scatter * hg * LightMarch(position, densityMultiplier);
-				//fogColor += scatter * BeerPowder(fogDepth);
+				float beerPowder = BeerPowder(fogDepth);
+				float lightMarch = LightMarch(position, densityMultiplier) * fogDepth * 256.0 * invRays * beerPowder;
+				float scatter = _Scatter * hg * lightMarch;
+				fogColor += scatter * _HGAmount;
+				fogColor -= _ShadowScatter * (1.0 - hg) * lightMarch * _ShadowAmount;
+				//fogColor -= fogDepth * _ShadowScatter * (1.0 - hg) * ShadowMarch(position, densityMultiplier) * beerPowder * 256.0 * invRays;
+				//fogColor -= fogDepth * _ShadowScatter * (1.0 - hg) * ShadowMarch(position, densityMultiplier) * BeerPowder(fogDepth) * 256.0 * invRays;
 				//fogColor += _Color * scatter * BeerPowder(fogDepth);
 				//fogColor += _Color * BeerPowder(fogDepth);
-				fogDepth += density * densityMultiplier;
-				//if (fogDepth < 1.0)
+				fogDepth += noise.x * densityMultiplier;
+				if (beerPowder * densityMultiplier < 1.0)
 				{
 					//fogColor += lerp(_Color1, _Color2, noiseAtPoint.y) * density * densityMultiplier * _Saturation * .025 * LightMarch(position, densityMultiplier);
-					fogColor += lerp(_Color1, _Color2, noiseAtPoint.y) * density * densityMultiplier * _Saturation * .025 * BeerPowder(fogDepth);
+					//fogColor += lerp(_Color1, _Color2, noise.y) * noise.x * densityMultiplier * _Saturation * .025 * Beer(fogDepth);
+					fogColor += lerp(_Color1, _Color2, noise.y) * noise.x * densityMultiplier * _Saturation * .025 * beerPowder;
 				}
 			}
 
