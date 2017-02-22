@@ -1,5 +1,6 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
+using TMX.Utils;
 using UnityEngine;
 using UnityStandardAssets.ImageEffects;
 
@@ -28,6 +29,19 @@ public class VolumetricFog : PostEffectsBase
         if (!isSupported || fogMaterial == null)
             ReportAutoDisable();
         return isSupported;
+    }
+
+    [ContextMenu("Random Offsets")]
+    public void GenerateRandomSphere ()
+    {
+        string output = "static const float3 Offsets[8] = {\n";
+        for(int i = 0; i < 8; i++)
+        {
+            var rand = MathUtils.RandomInUnitSphere();
+            output += string.Format("\tfloat3({0}, {1}, {2}),\n", rand.x.ToString("N4"), rand.y.ToString("N4"), rand.z.ToString("N4"));
+        }
+        output += "};";
+        Debug.Log(output);
     }
 
     [ImageEffectAllowedInSceneView]
@@ -80,26 +94,13 @@ public class VolumetricFog : PostEffectsBase
 
         fogMaterial.SetMatrix("_FrustumCornersWS", frustumCorners);
 
-        var sceneMode = RenderSettings.fogMode;
-        var sceneDensity = RenderSettings.fogDensity;
-        var sceneStart = RenderSettings.fogStartDistance;
-        var sceneEnd = RenderSettings.fogEndDistance;
-        Vector4 sceneParams;
-        bool linear = (sceneMode == FogMode.Linear);
-        float diff = linear ? sceneEnd - sceneStart : 0.0f;
-        float invDiff = Mathf.Abs(diff) > 0.0001f ? 1.0f / diff : 0.0f;
-        sceneParams.x = sceneDensity * 1.2011224087f; // density / sqrt(ln(2)), used by Exp2 fog mode
-        sceneParams.y = sceneDensity * 1.4426950408f; // density / ln(2), used by Exp fog mode
-        sceneParams.z = linear ? -invDiff : 0.0f;
-        sceneParams.w = linear ? sceneEnd * invDiff : 0.0f;
-        fogMaterial.SetVector("_SceneFogParams", sceneParams);
-
         int pass = 0;
 
         if (downsample)
         {
-            var downscaleTemp = RenderTexture.GetTemporary(Mathf.CeilToInt(Screen.width * downsampleSize), Mathf.CeilToInt(Screen.height * downsampleSize), 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Default, 8);
+            var downscaleTemp = RenderTexture.GetTemporary(Mathf.CeilToInt(Screen.width * downsampleSize), Mathf.CeilToInt(Screen.height * downsampleSize), 0, RenderTextureFormat.ARGBHalf, RenderTextureReadWrite.Default, 8);
             CustomGraphicsBlit(source, downscaleTemp, fogMaterial, pass);
+            //Graphics.Blit(source, downscaleTemp, fogMaterial, pass);
             if (blur)
             {
                 float blurSizeCalc = blurSize * .01f;
@@ -129,21 +130,23 @@ public class VolumetricFog : PostEffectsBase
         }
         else
         {
-            CustomGraphicsBlit(source, destination, fogMaterial, pass);
+            var temp = RenderTexture.GetTemporary(Screen.width, Screen.height, 0, RenderTextureFormat.ARGBHalf, RenderTextureReadWrite.Default, 8);
+            CustomGraphicsBlit(source, temp, fogMaterial, pass);
 
             if (blur)
             {
                 float blurSizeCalc = blurSize * .01f;
                 float blurSizeCalc_SQR = blurSizeCalc * blurSizeCalc;
                 fogMaterial.SetVector("_Offset", new Vector2(blurSizeCalc, 0f));
-                Graphics.Blit(destination, destination, fogMaterial, 1);
+                Graphics.Blit(temp, destination, fogMaterial, 1);
                 fogMaterial.SetVector("_Offset", new Vector2(0f, blurSizeCalc));
-                Graphics.Blit(destination, destination, fogMaterial, 1);
+                Graphics.Blit(destination, temp, fogMaterial, 1);
             }
 
-            Shader.SetGlobalTexture("_FogTex", destination);
+            Shader.SetGlobalTexture("_FogTex", temp);
             Shader.SetGlobalTexture("_SceneTex", source);
-            Graphics.Blit(destination, destination, fogMaterial, 2);
+            Graphics.Blit(temp, destination, fogMaterial, 2);
+            RenderTexture.ReleaseTemporary(temp);
         }
     }
 

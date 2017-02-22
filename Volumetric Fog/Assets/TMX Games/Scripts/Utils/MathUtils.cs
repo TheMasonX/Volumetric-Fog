@@ -78,6 +78,13 @@ namespace TMX.Utils
             return (Pow(4, depth + 1) - 1) / 3;
         }
 
+        public static Vector3 RandomInUnitSphere ()
+        {
+            float radius = Random.value;
+            radius = 1.0f - radius * radius;
+            return Random.onUnitSphere * radius;
+        }
+
         public static Vector3 GetCircularPositionV3 (float angle, float radius)
         {
             return GetCircularPositionV3(angle) * radius;

@@ -22,23 +22,39 @@ Properties {
 	[Space]
     _LightRays ("Light Samples", Range(1, 8)) = 4
     _LightDistance ("Light Distance", Range(10, 1000.0)) = 200
+    _LightOffset ("Light Offset Size", Range(0.0, 1.0)) = .025
+    _LightFalloff ("Light Falloff", Range(0.0, 1.0)) = .025
 	//_StepSize ("Step Size", Range(0.01, 50.0)) = .25
 
 	[Space]
 	_Cutoff ("Cutoff", Range(0.0, 1.0)) = .25
 	_CutoffNoise ("Cutoff Noise Amount", Range(0.0, 1.0)) = .25
-	_Density ("Density", Range(0.0, 10.0)) = .25
-	_Saturation ("Saturation", Range(0.0, 10.0)) = .25
+	_Density ("Density", Range(0.0, 1.0)) = .25
+	_Sharpness ("Sharpness", Range(0.0, 1.0)) = .25
+	_Saturation ("Saturation", Range(0.0, 1.0)) = .25
 	_Scale1 ("Scale1", Range(0.0, 1.0)) = .15
 	_Scale2 ("Scale2", Range(0.0, 1.0)) = .15
 	_AxisScale ("Axis Scale", Vector) = (1, 1, 1, 0)
 
 	[Space]
-    _ShadowScatter("Shadow Scattering Coeff", Range(0.0, .125)) = 0.008
     _Scatter("Scattering Coeff", Range(0.005, .075)) = 0.008
-    _HGCoeff("Henyey-Greenstein", Range(0.0, 1.0)) = 0.5
+    _HGCoeff("Henyey-Greenstein", Range(0.0, 0.999)) = 0.5
     _HGAmount("Henyey-Greenstein Amount", Range(0.0, 2.0)) = 0.5
-    _ShadowAmount("Shadow Falloff", Range(0.6, 2.0)) = 0.8
+
+	//_MieCoeff("Mie Coefficient", Range(-.999, 0.999)) = 0.5
+ //   _MieAmount("Mie Amount", Range(0.0, 2.0)) = 0.5
+
+	[Space]
+	_ShadowMultiplier("Shadow Multiplier", Range(0.0, 1.0)) = .2
+    _MaxShadow("Max Shadow", Range(0.0, 1.0)) = .9
+
+	[Space]
+	_LightAmount("Light Multiplier", Range(0.0, 2.0)) = .2
+    _LightEmpty("Light Empty Cutoff", Range(0.0, 0.3)) = .05
+    _MinLight("Min Light", Range(0.0, 1.0)) = .5
+    _MaxLight("Max Light", Range(0.0, 1.0)) = .9
+
+	[Space]
 	_Extinct ("Extinction Coeff", Range(0.01, .5)) = 0.01
 }
 
@@ -53,41 +69,63 @@ CGINCLUDE
 	uniform float4 _CameraDepthTexture_TexelSize;
 	uniform sampler3D _Noise;
 
-	uniform float _Anim1;
-	uniform float _Anim2;
+	uniform half _Anim1;
+	uniform half _Anim2;
 
 	uniform int _Rays;
-	uniform float _MaxDistance;
-	uniform float _NearWeight;
+	uniform half _MaxDistance;
+	uniform half _NearWeight;
 
-	uniform float _NearFade;
-	//uniform float _FarFade;
-	//uniform float _FarFadeTrans;
+	uniform half _NearFade;
+	//uniform half _FarFade;
+	//uniform half _FarFadeTrans;
 
 	uniform int _LightRays;
-	uniform float _LightDistance;
+	uniform half _LightDistance;
+	uniform float _LightOffset;
+	uniform float _LightFalloff;
 
-	//uniform float _StepSize;
-	uniform float _Cutoff;
-	uniform float _CutoffNoise;
-	uniform float _Density;
-	uniform float _Saturation;
+	//uniform half _StepSize;
+	uniform half _Cutoff;
+	uniform half _CutoffNoise;
+	uniform half _Density;
+	uniform half _Sharpness;
+	uniform half _Saturation;
 	uniform float _Scale1;
 	uniform float _Scale2;
 	uniform float4 _AxisScale;
 
-	uniform float _ShadowScatter;
-	uniform float _ShadowAmount;
-	uniform float _Scatter;
-	uniform float _HGCoeff;
-	uniform float _HGAmount;
-	uniform float _Extinct;
+	uniform half _ShadowMultiplier;
+	uniform half _MaxShadow;
+
+	uniform half _LightAmount;
+	uniform half _LightEmpty;
+	uniform half _MinLight;
+	uniform half _MaxLight;
+
+	uniform half _Scatter;
+	uniform half _HGCoeff;
+	uniform half _HGAmount;
+	uniform half _MieCoeff;
+	uniform half _MieAmount;
+	uniform half _Extinct;
 
 	float4 _Color1;
 	float4 _Color2;
 	
 	// for fast world space reconstruction
 	uniform float4x4 _FrustumCornersWS;
+
+	static const float3 Offsets[8] = {
+		float3(-0.0373, 0.0015, 0.0126),
+		float3(0.3152, 0.0882, 0.7360),
+		float3(0.0871, 0.1706, -0.3436),
+		float3(0.1184, 0.4140, 0.3061),
+		float3(-0.8586, -0.3685, -0.0858),
+		float3(0.0092, -0.0042, -0.0128),
+		float3(-0.1204, -0.7397, 0.1588),
+		float3(-0.1393, 0.8495, 0.2251),
+	};
 
 	struct v2f
 	{
@@ -117,20 +155,48 @@ CGINCLUDE
 		return o;
 	}
 
-	float HenyeyGreenstein(float cosine)
+	inline float ValueNoise(float3 pos)
 	{
-		float g2 = _HGCoeff * _HGCoeff;
-		return 0.5 * (1 - g2) / pow(1 + g2 - 2 * _HGCoeff * cosine, 1.5);
+		float3 Noise_skew = pos + 0.2127 + pos.x * pos.y * pos.z * 0.3713;
+		float3 Noise_rnd = 4.789 * sin(489.123 * (Noise_skew));
+		return frac(Noise_rnd.x * Noise_rnd.y * Noise_rnd.z * (1.0 + Noise_skew.x));
 	}
 
-	float Beer(float density)
+	half HenyeyGreenstein(half cosine)
+	{
+		half g2 = _HGCoeff * _HGCoeff;
+		//return 0.5 * (1.0 - g2) / pow(1.0 + g2 - 2.0 * _HGCoeff * cosine, 1.5);
+		half base = 1.0 + g2 - 2.0 * _HGCoeff * cosine;
+		return 0.5 * (1.0 - g2) / (base  * sqrt(base));
+	}
+
+	//half Mie(half cosine)
+	//{
+	//	half g2 = _MieCoeff * _MieCoeff;
+	//	half left = (3.0 * 1.0 - g2) / (2.0 * (2.0 + g2));
+	//	half base = 1.0 + g2 - 2.0 * _MieCoeff * cosine;
+	//	return left * (1.0 - g2 / base * sqrt(base));
+	//}
+
+	half NoiseBeer(half density)
+	{
+		return exp(-_Density * density);
+	}
+
+	half Beer(half density)
 	{
 		return exp(-_Extinct * density);
 	}
 
-	float BeerPowder(float depth)
+	half BeerPowder(half depth)
 	{
 		return exp(-_Extinct * depth) * (1 - exp(-_Extinct * 2 * depth));
+	}
+
+	float Coverage(float a, float sharpness)
+	{
+		a = 1.0 - exp(-(a - (1.0 - _Density)) * sharpness);
+		return saturate(a);
 	}
 
 	float2 NoiseAtPoint(float3 pos)
@@ -146,154 +212,166 @@ CGINCLUDE
 		value = lerp(value, value2, .5);
 		value.y = lerp(value.x, value.y, .5);
 
-		float cutoff = _Cutoff * (_CutoffNoise * value.b + 1.0 - _CutoffNoise);
-		value.x = saturate((value.x - cutoff) * (1.0 - cutoff));
-		value.x *= value.x;
+		value.x = Coverage(value.x, lerp(1.0, value.b, _CutoffNoise) * _Sharpness);
+		//value.x = 1.0 - Beer(value.x * _Density);
+
+		//float cutoff = _Cutoff * (_CutoffNoise * value.b + 1.0 - _CutoffNoise);
+		//value.x = saturate((value.x - cutoff) * (1.0 - cutoff));
+		//value.x *= value.x;
 		//value.x *= ;
 		return value.rg;
 		//return tex3D(_Noise, pos * .001 * _Scale.xyz).rg;
 	}
 
-	float LightMarch(float3 pos, float densityMultiplier)
+	//float2 LightMarch(float3 pos, float rand)
+	float2 LightMarch(float3 pos, float density)
 	{
 		float3 light = _WorldSpaceLightPos0.xyz;
 		float depth = 0.0;
+		float empty = 0.0;
 
 		float invLightRays = 1.0 / _LightRays;
 		float3 lightStep = _LightDistance * invLightRays * light;
 
 		pos += lightStep;
 
-		//[unroll(2)] for (int s = 0; s < _LightRays; s++)
 		UNITY_LOOP for (int s = 0; s < _LightRays; s++)
 		{
-			depth += (NoiseAtPoint(pos)) * invLightRays;
-			//depth += (NoiseAtPoint(pos) - _Cutoff) * invLightRays;
+			//float percent = ((s + 1.0) * invLightRays);
+			//percent = lerp(percent, percent * percent, _LightFalloff);
+
+			//float3 newPos = pos + (light) * percent * _LightDistance;
+
+			//float3 randomOffset = Offsets[(s + 16 * rand) % 8] * _LightOffset;
+			//float3 newPos = pos + (light + randomOffset) * percent * _LightDistance;
+			//float noise = NoiseAtPoint(newPos).x;
+
+			float noise = NoiseAtPoint(pos).x;
+			depth += noise;
+			empty += 1.0 - saturate(noise / _LightEmpty);
 			pos += lightStep;
 		}
 
-		//float3 lightStep = _LightDistance * .5 * light;
-		//pos += lightStep;
-		//depth += (NoiseAtPoint(pos)) * .5;
-		//pos += lightStep;
+		//empty *= empty;
+		empty = empty * invLightRays;
+		//empty = saturate(1.0 - empty);
+		empty = 1.0 - cos(1.570796327 * empty);
 
-		//depth += (NoiseAtPoint(pos)) * .5;
-		//pos += lightStep;
-		
-		return BeerPowder(depth);
+		return float2(BeerPowder(depth * invLightRays), empty);
+		//return empty * invLightRays;
+		//return BeerPowder(depth * invLightRays);
 	}
 
 	half4 ComputeFog (v2f i) : SV_Target
 	{
 		half4 sceneColor = tex2D(_MainTex, UnityStereoTransformScreenSpaceTex(i.uv));
 		
-		// Reconstruct world space position & direction
-		// towards this screen pixel.
 		float rawDepth = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, UnityStereoTransformScreenSpaceTex(i.uv_depth));
-		//float2 tOff = _MainTex_TexelSize.xy * 2.0;
-		////float2 tOff = _CameraDepthTexture_TexelSize.xy * 4.0;
-		//rawDepth = min(rawDepth, SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, UnityStereoTransformScreenSpaceTex(i.uv_depth + tOff)));
-		//rawDepth = min(rawDepth, SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, UnityStereoTransformScreenSpaceTex(i.uv_depth - tOff)));
-		//tOff.y *= -1.0;
-		//rawDepth = min(rawDepth, SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, UnityStereoTransformScreenSpaceTex(i.uv_depth + tOff)));
-		//rawDepth = min(rawDepth, SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, UnityStereoTransformScreenSpaceTex(i.uv_depth - tOff)));
 		float dpth = Linear01Depth(rawDepth);
 		float4 wsDir = dpth * i.interpolatedRay;
 		float3 normalizedDir = normalize(i.interpolatedRay);
 		float3 wsPos = _WorldSpaceCameraPos.xyz + wsDir.xyz;
 
-		float3 light = _WorldSpaceLightPos0.xyz;
-		float ldot = abs(dot(normalizedDir, light));
-		//ldot *= ldot;
+		float rand = 0;
+		//float rand = ValueNoise(normalizedDir * 50.0);
+		//return half4(rand.xxx, 0);
+
+		float3 lightDir = _WorldSpaceLightPos0.xyz;
+		half ldot = abs(dot(normalizedDir, lightDir));
 		//ldot = 1.0 - (1.0 - ldot) * (1.0 - ldot);
-		//float ldot = dot(normalizedDir, light);
-		float hg = HenyeyGreenstein(ldot);
-		//hg = pow(hg, .5);
+		half hg = HenyeyGreenstein(ldot);
 
 		float depth = dpth * _ProjectionParams.z;
 		depth = (dpth < .99) ? min(depth, _MaxDistance) : _MaxDistance;
-		float normalDist = _MaxDistance / _Rays;
-		float depthMult = depth / _MaxDistance;
+		half depthMult = depth / _MaxDistance;
 		int rays = max(depthMult * _Rays, 2);
 		//int rays = _Rays;
 
-		//int rayCount = min(_Rays, 512);
-
-		float invRays = 1.0 / (float)rays;
+		half invRays = 1.0 / (float)rays;
 
 		float3 startPos = _WorldSpaceCameraPos.xyz + normalizedDir * _ProjectionParams.y;
 		float3 position = startPos;
-		float fogDepth = 0.0;
+		half fogDepth = 0.0;
 
-		float stepSize = depth * invRays;
-		float densityMultiplier = _Density * 128.0 * invRays * depthMult;
+		half stepSize = depth * invRays;
+		half densityMultiplier = 256.0 * invRays * depthMult;
 
-		float fogAccum = 0.0;
-		half4 fogColor = 0.0;
-		//fixed4 fogColor = 0.0;
+		half3 fogColor = 0.0;
+		float light = 0.0;
+		float shadow = 0.0;
 
 
-		//[unroll(_Rays)] for (int i = 0; i < _Rays; i++)
 		UNITY_LOOP for (int i = 0; i < rays; i++)
 		{
-			if (fogAccum > 1.0)
+			UNITY_BRANCH if (Beer(fogDepth) < 0.001)
 			{
 				break;
 			}
 
-			float dist = (i * invRays);
+			half dist = (i * invRays);
 			dist = lerp(dist, dist * dist, _NearWeight);
 			dist *= depth;
-			float fade = saturate(dist / _MaxDistance / _NearFade);
+			half fade = saturate(dist / _MaxDistance / _NearFade);
 			fade *= fade/* * fade*/;
-			//float farFade = saturate((dist - _FarFade * _MaxDistance) / (1.0 - _FarFade));
-			//farFade *= farFade;
 
 			float2 noise = NoiseAtPoint(position);
-			//noise.x = saturate((noise.x + _Cutoff) * lerp(1.0, 1.2, farFade)) - _Cutoff;
-			//noise.x = lerp(noise.x, max(_FarFadeTrans, noise.x), farFade);
+
 			if (noise.x > 0.0)
 			{
-				float beerPowder = BeerPowder(fogDepth);
-				//if (i == 30)
-				//	return noise.x * densityMultiplier * (1.0 - beerPowder);
+				half beerPowder = BeerPowder(fogDepth);
+				half2 lightMarch = LightMarch(position, _Density) * 128.0;
+				half lightDepth = lightMarch.x * fogDepth * beerPowder;
+				light += lightMarch.y;
 
-				float lightMarch = LightMarch(position, densityMultiplier) * fogDepth * 256.0 * invRays * beerPowder;
-				float scatter = _Scatter * hg * lightMarch;
-				fogColor += scatter * _HGAmount;
+				half shadowAmount = lightDepth;
+				//half shadowAmount = _ShadowMultiplier * (.65 + .35 * (1.0 - hg)) * lightMarch;
+				//shadow += shadowAmount;
 
-				float shadowAmount = saturate(_ShadowScatter * lightMarch);
-				shadowAmount = 1.0 - (1.0 - shadowAmount) * (1.0 - shadowAmount);
-				//float shadowAmount = _ShadowScatter * (.65 + .35 * (1.0 - hg)) * lightMarch;
-				fogColor -= shadowAmount;
-				fogColor = saturate(fogColor);
-				//float shadowAmount = saturate(_ShadowScatter * .5 * (.5 + .5 * (1.0 - hg)) * lightMarch);
-				//fogColor -= pow(shadowAmount, _ShadowAmount);
+				shadowAmount = saturate(lightDepth * .2 * _ShadowMultiplier);
+				shadowAmount = sin(1.570796327 * shadowAmount);
+				shadowAmount = (1.0 - shadowAmount * _MaxShadow) + (1.0 - _MaxShadow);
+				//shadowAmount *= _MaxShadow; 
 
-				fogDepth += noise.x * densityMultiplier * fade;
-				//if (beerPowder * densityMultiplier < 1.0)
-				{
-					//fogColor += lerp(_Color1, _Color2, noiseAtPoint.y) * density * densityMultiplier * _Saturation * .025 * LightMarch(position, densityMultiplier);
-					//fogColor += lerp(_Color1, _Color2, noise.y) * noise.x * densityMultiplier * _Saturation * .025 * Beer(fogDepth);
-					//float colorMultiplier = lerp(noise.x, .25, farFade) * densityMultiplier * _Saturation * .05 * beerPowder * fade;
-					//colorMultiplier *= lerp(1.0, .15, farFade);
-					float colorMultiplier = noise.x * densityMultiplier * beerPowder * fade  * _Saturation * .05;
-					fogAccum += colorMultiplier;
-					fogColor += lerp(_Color1, _Color2, noise.y) * colorMultiplier;
-				}
+				//fogColor -= shadowAmount;
+				//fogColor = saturate(fogColor);
+
+				half scatter = _Scatter * hg * lightDepth * _HGAmount;
+				//fogColor += scatter * invRays;
+
+				fogDepth += noise.x * densityMultiplier;
+
+				half colorMultiplier = noise.x * densityMultiplier * beerPowder * fade * _Saturation * .5;
+				//half colorMultiplier = noise.x * densityMultiplier * beerPowder * fade  * _Saturation * .05;
+				half3 lerpedColor = lerp(_Color1.xyz, _Color2.xyz, noise.y) * colorMultiplier;
+				float lightLerp = lerp(_MinLight, _MaxLight, lightMarch.y);
+				lightLerp = lerp(1.0, lightLerp, _LightAmount);
+				lightLerp += scatter;
+				fogColor += lerpedColor * lightLerp * shadowAmount;
 			}
 
 			position = startPos + normalizedDir * dist;
 			//position += rayStep;
 		}
 
+		//light = saturate(light * _LightAmount);
+		//light *= light * (3.0 - 2.0 * light);
+		//light = 1.0 - cos(1.570796327 * light);
+		//light *= light;
+		//light *= _MaxLight;
 
+		//fogColor += light;
+
+		//shadow = saturate(shadow * _ShadowMultiplier);
+		//shadow = sin(1.570796327 * shadow);
+		//shadow *= _MaxShadow;
+		//
+		//fogColor = lerp(fogColor.xyz, half3(0,0,0), shadow);
 
 		//fogDepth = saturate(fogDepth);
 
 		//fogColor += Beer(fogDepth) * sceneColor;
 		//return fogColor;
-		return float4(fogColor.xyz, Beer(fogDepth));
+		return half4(fogColor.xyz, Beer(fogDepth));
 
 		//return lerp(_Color, sceneColor, Beer(fogDepth));
 		//return lerp(fogColor, sceneColor, Beer(fogDepth));
@@ -321,7 +399,7 @@ SubShader
 		#pragma vertex vert
 		#pragma fragment fragBlur
 
-		uniform float4 _Offset;
+		uniform half4 _Offset;
 
 		float4 fragBlur(v2f i) : SV_Target
 		{
